@@ -1,3 +1,5 @@
+﻿using System.ComponentModel;
+
 namespace dotless.Compiler
 {
     using System;
@@ -31,59 +33,72 @@ namespace dotless.Compiler
             }
 
             string inputDirectoryPath, inputFilePattern;
-
-            if (Directory.Exists(arguments[0]))
-            {
-                inputDirectoryPath = arguments[0];
-                inputFilePattern = "*.less";
-            }
-            else
-            {
-                inputDirectoryPath = Path.GetDirectoryName(arguments[0]);
-                if (string.IsNullOrEmpty(inputDirectoryPath)) inputDirectoryPath = "." + Path.DirectorySeparatorChar;
-                inputFilePattern = Path.GetFileName(arguments[0]);
-                if (!Path.HasExtension(inputFilePattern)) inputFilePattern = Path.ChangeExtension(inputFilePattern, "less");
-            }
-
+            string[] filenames;
             var outputDirectoryPath = string.Empty;
             var outputFilename = string.Empty;
-            if (arguments.Count > 1)
+
+            if (!arguments[0].Contains('$'))
             {
-                if (Directory.Exists(arguments[1]))
+                if (Directory.Exists(arguments[0]))
                 {
-                    outputDirectoryPath = arguments[1];
+                    inputDirectoryPath = arguments[0];
+                    inputFilePattern = "*.less";
                 }
                 else
                 {
-                    outputDirectoryPath = Path.GetDirectoryName(arguments[1]);
-                    outputFilename = Path.GetFileName(arguments[1]);
-
-                    if (!Path.HasExtension(outputFilename))
-                        outputFilename = Path.ChangeExtension(outputFilename, "css");
+                    inputDirectoryPath = Path.GetDirectoryName(arguments[0]);
+                    if (string.IsNullOrEmpty(inputDirectoryPath))
+                        inputDirectoryPath = "." + Path.DirectorySeparatorChar;
+                    inputFilePattern = Path.GetFileName(arguments[0]);
+                    if (!Path.HasExtension(inputFilePattern))
+                        inputFilePattern = Path.ChangeExtension(inputFilePattern, "less");
                 }
-            }
-            
-            if (string.IsNullOrEmpty(outputDirectoryPath))
-            {
-                outputDirectoryPath = inputDirectoryPath;
+
+                if (arguments.Count > 1)
+                {
+                    if (Directory.Exists(arguments[1]))
+                    {
+                        outputDirectoryPath = arguments[1];
+                    }
+                    else
+                    {
+                        outputDirectoryPath = Path.GetDirectoryName(arguments[1]);
+                        outputFilename = Path.GetFileName(arguments[1]);
+
+                        if (!Path.HasExtension(outputFilename))
+                            outputFilename = Path.ChangeExtension(outputFilename, "css");
+                    }
+                }
+
+                if (string.IsNullOrEmpty(outputDirectoryPath))
+                {
+                    outputDirectoryPath = inputDirectoryPath;
+                }
+                else
+                {
+                    Directory.CreateDirectory(outputDirectoryPath);
+                }
+
+                if (HasWildcards(inputFilePattern))
+                {
+                    if (!string.IsNullOrEmpty(outputFilename))
+                    {
+                        Console.WriteLine(
+                            "Output filename patterns/filenames are not supported when using input wildcards. You may only specify an output directory (end the output in a directory seperator)");
+                        return -1;
+                    }
+                    outputFilename = string.Empty;
+
+                }
+
+                filenames = Directory.GetFiles(inputDirectoryPath, inputFilePattern);
             }
             else
             {
-                Directory.CreateDirectory(outputDirectoryPath);
+                filenames = arguments[0].Split(new []{'$'}, StringSplitOptions.RemoveEmptyEntries);
+                inputFilePattern = String.Empty;
+                inputDirectoryPath = String.Empty;
             }
-
-            if (HasWildcards(inputFilePattern))
-            {
-                if (!string.IsNullOrEmpty(outputFilename))
-                {
-                    Console.WriteLine("Output filename patterns/filenames are not supported when using input wildcards. You may only specify an output directory (end the output in a directory seperator)");
-                    return -1;
-                }
-                outputFilename = string.Empty;
-
-            }
-
-            var filenames = Directory.GetFiles(inputDirectoryPath, inputFilePattern);
 
             using (var watcher = new Watcher() { Watch = configuration.Watch })
             {
@@ -99,10 +114,12 @@ namespace dotless.Compiler
 
                     var outputFile = 
                         string.IsNullOrEmpty(outputFilename) ? 
-                            Path.Combine(outputDirectoryPath, Path.ChangeExtension(inputFile.Name, "css")) :
+                            Path.Combine(inputFile.DirectoryName, Path.ChangeExtension(inputFile.Name, "css")) :
                             Path.Combine(outputDirectoryPath, outputFilename);
 
                     var outputFilePath = Path.GetFullPath(outputFile);
+
+                    Console.WriteLine("{0} → {1}", filename, outputFilePath);
 
                     CompilationDelegate compilationDelegate = () => CompileImpl(new EngineFactory(configuration).GetEngine(), inputFile.FullName, outputFilePath);
 
